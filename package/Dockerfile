@@ -6,35 +6,26 @@
 #
 #You should have received a copy of the CC0 legalcode along with this
 #work.  If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
-FROM registry.access.redhat.com/rhel7/rhel
+FROM centos:centos8
 
-ARG RH_ORG
-ARG RH_ACTIVATION
+#ARG RH_ORG
+#ARG RH_ACTIVATION
 
-ENV CONFIGURE_FLAGS="--prefix=/opt/syslog-ng --with-ivykis=system --with-jsonc=system --disable-env-wrapper --disable-memtrace --enable-tcp-wrapper --disable-linux-caps --disable-man-pages --enable-all-modules --enable-force-gnu99 --enable-json --enable-native --enable-python --enable-http --enable-kafka --disable-java --disable-java-modules --disable-spoof_source --disable-sun_streams --disable-sql --disable-pacct --disable-mongodb --disable-amqp --disable-stomp --disable-redis --disable-systemd --disable-geoip --disable-geoip2 --disable-riemann --disable-smtp --disable-snmp_dest --with-python=3 --enable-dynamic-linking"
+ENV CONFIGURE_FLAGS="--prefix=/opt/syslog-ng --with-ivykis=internal --with-jsonc=system --disable-env-wrapper --disable-memtrace --disable-tcp-wrapper --disable-linux-caps --disable-man-pages --enable-all-modules --enable-force-gnu99 --enable-json --enable-native --enable-python --enable-http --disable-kafka --disable-java --disable-java-modules --disable-spoof_source --disable-sun_streams --disable-sql --disable-pacct --disable-mongodb --disable-amqp --disable-stomp --disable-redis --disable-systemd --disable-geoip --disable-geoip2 --disable-riemann --disable-smtp --disable-snmp_dest --with-python=3 --disable-manpages --enable-dynamic-linking"
 
-ENV DISTCHECK_CONFIGURE_FLAGS="--prefix=/opt/syslog-ng --with-ivykis=system --with-jsonc=system --disable-env-wrapper --disable-memtrace --enable-tcp-wrapper --disable-linux-caps --disable-man-pages --enable-all-modules --enable-force-gnu99 --enable-json --enable-native --enable-python --enable-http --enable-kafka --disable-java --disable-java-modules --disable-spoof_source --disable-sun_streams --disable-sql --disable-pacct --disable-mongodb --disable-amqp --disable-stomp --disable-redis --disable-systemd --disable-geoip --disable-geoip2 --disable-riemann --disable-smtp --disable-snmp_dest --with-python=3 --enable-dynamic-linking"
-COPY confluent.repo /etc/yum.repos.d/confluent.repo
-RUN subscription-manager register --org=$RH_ORG --activationkey=$RH_ACTIVATION --force
-RUN subscription-manager repos --enable=rhel-7-server-extras-rpms --enable=rhel-7-server-optional-rpms --enable=rhel-server-rhscl-7-rpms
-RUN yum update -y; yum install wget -y
-RUN rpm --import https://packages.confluent.io/rpm/5.2/archive.key
-RUN cd /tmp ;\
-    wget https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm ;\
-    yum install epel-release-latest-7.noarch.rpm -y ;\
-    rm epel-release-latest-7.noarch.rpm
-RUN yum install findutils autoconf \
-    autoconf-archive automake ca-certificates git libtool pkgconfig bison byacc file \
-    flex pcre-devel glib2-devel openssl-devel librdkafka-devel libcurl-devel \
-    rh-python36 rh-python36-python-tools rh-python36-scldevel\
+ENV DISTCHECK_CONFIGURE_FLAGS="--prefix=/opt/syslog-ng --with-ivykis=internal --with-jsonc=system --disable-env-wrapper --disable-memtrace --disable-tcp-wrapper --disable-linux-caps --disable-man-pages --enable-all-modules --enable-force-gnu99 --enable-json --enable-native --enable-python --enable-http --disable-kafka --disable-java --disable-java-modules --disable-spoof_source --disable-sun_streams --disable-sql --disable-pacct --disable-mongodb --disable-amqp --disable-stomp --disable-redis --disable-systemd --disable-geoip --disable-geoip2 --disable-riemann --disable-smtp --disable-snmp_dest --with-python=3 --disable-manpages --enable-dynamic-linking"
+
+RUN dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+RUN dnf update -y && \
+    dnf install -y findutils \
+    autoconf \
+    automake ca-certificates git libtool pkgconfig bison byacc file \
+    flex pcre-devel glib2-devel openssl-devel libcurl-devel \
     net-snmp-devel \
     libuuid-devel cmake make libxslt docbook-style-xsl gcc-c++ tzdata libxml2 sqlite \
-    json-c-devel gnupg wget curl which bzip2 doxygen libsecret ivykis-devel -y
+    wget curl which bzip2 libsecret python3 python3-devel python3-pip json-c man-pages && \
+    dnf --enablerepo=PowerTools -y install autoconf-archive json-c-devel
 
-RUN subscription-manager unregister
-
-RUN echo source scl_source enable rh-python36 >>/etc/profile.d/enablepython36.sh ;\
-    source scl_source enable rh-python36
 
 RUN CRITERION_VERSION=2.3.3 ;\
     cd /tmp/;\
@@ -48,41 +39,26 @@ RUN CRITERION_VERSION=2.3.3 ;\
 
 COPY syslog-ng /work
 
-RUN source scl_source enable rh-python36 ;\
-    cd /work;\
-    pip install -r requirements.txt ;\
+RUN cd /work;\
+    pip3 install -r requirements.txt
+RUN cd /work;\
     ./autogen.sh ;\
-    ./configure $CONFIGURE_FLAGS ;\
-    make -j -l 2.5 install
+    ./configure $CONFIGURE_FLAGS
+
+RUN make -j -l 2.5 install
 
 
-FROM registry.access.redhat.com/ubi7/ubi
+FROM registry.access.redhat.com/ubi8/ubi
 
-COPY confluent.repo /etc/yum.repos.d/confluent.repo
+RUN dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+RUN dnf update -y && \
+    dnf install -y tzdata libdbi libsecret libxml2 sqlite libcurl curl wget openssl json-c python3
 
-RUN cd /tmp ;\
-    yum install -y wget ;\
-    wget https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm ;\
-    yum install epel-release-latest-7.noarch.rpm -y ;\
-    rm epel-release-latest-7.noarch.rpm ;\
-    rpm --import https://packages.confluent.io/rpm/5.2/archive.key ;\
-    yum install gcc tzdata libdbi libsecret libxml2 sqlite tcp_wrappers librdkafka \
-    rh-python36 rh-python36-python-tools libcurl ivykis scl-utils tcp_wrappers-libs curl wget openssl -y;\
-    echo source scl_source enable rh-python36 >>/etc/profile.d/enablepython36.sh ;\
-    source scl_source enable rh-python36
-
-ENV DEBCONF_NONINTERACTIVE_SEEN=true
-ENV SPLUNK_CONNECT_METHOD=hec
-ENV SYSLOGNG_HEC_WORKERS=10
-
-RUN source scl_source enable rh-python36 ; curl -fsSL https://goss.rocks/install | GOSS_VER=v0.3.7 sh
+RUN curl -fsSL https://goss.rocks/install | GOSS_VER=v0.3.7 sh
 COPY goss.yaml /etc/goss.yaml
 
 COPY --from=0 /opt/syslog-ng /opt/syslog-ng
-
-RUN curl -o /usr/local/bin/gomplate -sSL https://github.com/hairyhenderson/gomplate/releases/download/v3.5.0/gomplate_linux-amd64-slim && \
-    chmod 755 /usr/local/bin/gomplate
-
+COPY --from=hairyhenderson/gomplate:v3.5.0-slim /gomplate /bin/gomplate
 
 COPY etc/syslog-ng.conf /opt/syslog-ng/etc/syslog-ng.conf
 COPY etc/conf.d /opt/syslog-ng/etc/conf.d
@@ -92,13 +68,11 @@ COPY etc/local_config /opt/syslog-ng/etc/local_config
 
 COPY sbin/entrypoint.sh /
 RUN mkdir -p /opt/syslog-ng/var/data/disk-buffer
-RUN source scl_source enable rh-python36 ;/opt/syslog-ng/sbin/syslog-ng -V
+RUN /opt/syslog-ng/sbin/syslog-ng -V
 
 EXPOSE 514
 EXPOSE 601/tcp
 EXPOSE 6514/tcp
-
-ENV SPLUNK_CONNECT_METHOD=UF
 
 ENTRYPOINT ["/entrypoint.sh", "-F"]
 
