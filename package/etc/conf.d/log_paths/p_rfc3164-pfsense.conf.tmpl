@@ -1,0 +1,52 @@
+# PFSENSE
+{{ $context := dict "port_id" "PFSENSE" "parser" "common"}}
+{{ tmpl.Exec "t/source_network.t" $context }}
+
+# The following is an inline template; we will use this to generate the actual log path
+{{ define "log_path" }}
+log {
+{{- if eq (.) "yes"}}
+    source(s_DEFAULT);
+    filter(f_pfsense);
+{{- end}}
+{{- if eq (.) "no"}}
+    source (s_PFSENSE);
+{{- end}}
+#Set a default sourcetype and index
+
+        rewrite { r_set_splunk_dest_default(sourcetype("pfsense"), index("main"))};
+        # Set sourcetype
+        if (match("filterlog" value("PROGRAM"))) {
+            rewrite { r_set_splunk_dest_default(sourcetype("filterlog"), index("netfw"))};
+            parser {p_add_context_splunk(key("pfsense_filterlog")); };
+        }
+        elif (match("Classification: Misc activity" value("RAWMSG"))) {
+            rewrite { r_set_splunk_dest_default(sourcetype("snort"), index("main"))};
+            parser {p_add_context_splunk(key("pfsense_openappid")); };
+        }
+        elif (match("snort" value("PROGRAM"))) {
+            rewrite { r_set_splunk_dest_default(sourcetype("snort"), index("main"))};
+            parser {p_add_context_splunk(key("pfsense_snort")); };
+        #}
+        #elif (match("(\d{1,3}\.){3}\d{1,3}\s+\S+\s+\S+\s+" value("RAWMSG"))) {
+        #    rewrite { r_set_splunk_dest_default(sourcetype("squid"), index("main"))};
+        #    parser {p_add_context_splunk(key("pfsense_squid")); };
+        };
+
+        #using the key "pfsense" find any cutomized index,source or sourcetype meta values
+
+            parser {p_add_context_splunk(key("pfsense")); };
+        # Any additional logic needed to process the event before sending to Splunk goes here
+        # Send it to Splunk
+            destination(d_hec);  #--HEC--
+        # Note: We normally do not use the "final" flag; this will allow another plugin to be created that will
+        # forward events to another system
+        flags(flow-control);
+};
+{{- end}}
+{{- if (ne (getenv (print "SC4S_LISTEN_PFSENSE_TCP_PORT") "no") "no") or (ne (getenv (print "SC4S_LISTEN_PFSENSE_UDP_PORT") "no") "no") or (ne (getenv (print "SC4S_LISTEN_PFSENSE_TLS_PORT") "no") "no") }}
+# Listen on the specified dedicated port(s) for PFSENSE traffic
+{{tmpl.Exec "log_path" "no" }}
+{{- end}}
+# Listen on the default port (typically 514) for PFSENSE traffic
+{{tmpl.Exec "log_path" "yes" }}
